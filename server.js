@@ -6,7 +6,7 @@ import admin from 'firebase-admin';
 import { createRequire } from 'module';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-
+import { createHash } from 'crypto';
 
 // Use createRequire to import the JSON file in a compatible way
 const require = createRequire(import.meta.url);
@@ -43,15 +43,13 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 console.log('✅ Google Generative AI initialized.');
 
 
-// --- API ENDPOINTS ---
+// --- RECIPE API ENDPOINTS ---
 
 // GET all saved recipes
 app.get('/get-recipes', async (req, res) => {
     try {
         const recipesCollection = admin.firestore().collection('recipes');
-        // **THIS IS THE FIX**: Removed the .orderBy() to prevent indexing errors.
-        // Sorting will now be handled on the client side.
-        const snapshot = await recipesCollection.get();
+        const snapshot = await recipesCollection.orderBy('createdAt', 'desc').get();
         if (snapshot.empty) {
             return res.json([]);
         }
@@ -135,8 +133,35 @@ app.post('/scrape-recipe', async (req, res) => {
     }
 });
 
+// GET a list of ingredients for a given dish name
+app.post('/get-ingredients-for-dish', async (req, res) => {
+    const { dishName } = req.body;
+    if (!dishName) {
+        return res.status(400).json({ error: 'Dish name is required.' });
+    }
 
-// POST to generate a new recipe
+    try {
+        const modelName = 'gemini-2.5-flash-preview-05-20';
+        const apiKey = process.env.GEMINI_API_KEY;
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+        
+        const prompt = `List the essential ingredients for making ${dishName}. Return the response as a single, comma-separated string. For example: "Ingredient 1, Ingredient 2, Ingredient 3"`;
+        
+        const payload = { contents: [{ parts: [{ text: prompt }] }] };
+        const apiResponse = await axios.post(apiUrl, payload, { headers: { 'Content-Type': 'application/json' } });
+        const ingredientsText = apiResponse.data.candidates[0].content.parts[0].text;
+        
+        const ingredients = ingredientsText.split(',').map(item => item.trim()).filter(Boolean);
+        res.json({ ingredients });
+
+    } catch (error) {
+        console.error('🔥 Error getting ingredients for dish:', error);
+        res.status(500).json({ error: `Failed to get ingredients for ${dishName}.` });
+    }
+});
+
+
+// POST to generate a new recipe or update an existing one
 app.post('/get-recipe', async (req, res) => {
     const { ingredients, time, diet, allergies, cookingStyle } = req.body;
 
@@ -145,12 +170,35 @@ app.post('/get-recipe', async (req, res) => {
     }
 
     try {
+        const sortedIngredients = [...ingredients].sort().join(',');
+        const customizationString = `${time}|${diet}|${allergies}|${cookingStyle}`;
+        const requestString = `${sortedIngredients}#${customizationString}`;
+        const uniqueKey = createHash('sha256').update(requestString).digest('hex');
+
+        const recipesCollection = admin.firestore().collection('recipes');
+        const query = recipesCollection.where('uniqueKey', '==', uniqueKey).limit(1);
+        const snapshot = await query.get();
+
+        if (!snapshot.empty) {
+            console.log('✅ Found existing recipe. Incrementing generation count.');
+            const existingDoc = snapshot.docs[0];
+            const recipeRef = recipesCollection.doc(existingDoc.id);
+
+            await recipeRef.update({
+                generationCount: admin.firestore.FieldValue.increment(1)
+            });
+
+            const updatedDoc = await recipeRef.get();
+            return res.json({ id: updatedDoc.id, ...updatedDoc.data() });
+        }
+        
+        console.log('📝 No existing recipe found. Generating a new one.');
         const modelName = 'gemini-2.5-flash-preview-05-20';
         const apiKey = process.env.GEMINI_API_KEY;
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
         let prompt = `Analyze the following request and return a valid JSON object with two top-level keys: "recipe" and "nutrition".
-- The "nutrition" value must be a JSON object with keys for "calories", "protein", "carbs", and "fat". Each key's value must be an object with "value" (a number) and "unit" (a string).
+- The "nutrition" value must be a JSON object with keys for "calories", "protein", "carbs", and "fat". Additionally, include keys for "vitaminC", "iron", and "calcium" if they are present in significant amounts. Each key's value must be an object with "value" (a number) and "unit" (a string, e.g., "g", "mg", "kcal").
 - The "recipe" value must ALSO BE A JSON OBJECT with the following keys:
   - "title": A string for the recipe title.
   - "description": A short, engaging one-sentence string describing the dish.
@@ -174,29 +222,179 @@ Recipe Request Details:
 
         let responseText = apiResponse.data.candidates[0].content.parts[0].text;
         responseText = responseText.replace(/```(json)?/g, '').trim();
-        const sanitizedText = responseText.replace(/[\n\r]/g, '');
-        const parsedData = JSON.parse(sanitizedText);
+        
+        let parsedData;
+        try {
+            parsedData = JSON.parse(responseText.replace(/[\n\r]/g, ''));
+        } catch (e) {
+            console.warn("⚠️ Initial JSON parse failed. Attempting to self-correct...");
+            const fixupPrompt = `The following JSON is broken. Please fix it and return only the valid JSON object.\n\nBroken JSON:\n${responseText}`;
+            const fixupPayload = { contents: [{ parts: [{ text: fixupPrompt }] }] };
+            const fixupResponse = await axios.post(apiUrl, fixupPayload, { headers: { 'Content-Type': 'application/json' } });
+            
+            let fixedText = fixupResponse.data.candidates[0].content.parts[0].text;
+            fixedText = fixedText.replace(/```(json)?/g, '').trim();
+            parsedData = JSON.parse(fixedText.replace(/[\n\r]/g, ''));
+            console.log("✅ AI successfully self-corrected the JSON.");
+        }
+        
         const { recipe: recipeData, nutrition: nutritionData } = parsedData;
 
-        if (!recipeData || !nutritionData) throw new Error("AI response was missing structured recipe or nutrition data.");
-        
-        const recipesCollection = admin.firestore().collection('recipes');
-        const docRef = await recipesCollection.add({
+        if (!recipeData || !nutritionData) throw new Error("AI response was missing data.");
+
+        const recipePayload = {
             ingredients: ingredients,
-            recipe: recipeData, 
+            recipe: recipeData,
             nutrition: nutritionData,
             createdAt: new Date(),
-            customization: { time, diet, allergies, cookingStyle }
-        });
-        console.log('📝 Recipe saved to Firestore with ID:', docRef.id);
+            customization: { time, diet, allergies, cookingStyle },
+            isFavourite: false,
+            generationCount: 1,
+            uniqueKey: uniqueKey
+        };
 
-        res.json({ recipe: recipeData, nutrition: nutritionData });
+        const docRef = await recipesCollection.add(recipePayload);
+        console.log('📝 New recipe saved to Firestore with ID:', docRef.id);
+
+        res.json({ id: docRef.id, ...recipePayload });
 
     } catch (error) {
-        console.error('🔥 Error generating recipe or saving to Firestore:', error);
-        res.status(500).json({ error: `Failed to generate recipe: ${String(error)}` });
+        console.error('🔥 Error generating/updating recipe:', error);
+        res.status(500).json({ error: `Failed to process recipe: ${String(error)}` });
     }
 });
+
+// GET popular recipes
+app.get('/get-popular-recipes', async (req, res) => {
+    try {
+        const recipesCollection = admin.firestore().collection('recipes');
+        const snapshot = await recipesCollection.orderBy('generationCount', 'desc').limit(5).get();
+        if (snapshot.empty) {
+            return res.json([]);
+        }
+        const recipes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.json(recipes);
+    } catch (error) {
+        console.error('🔥 Error fetching popular recipes:', error);
+        res.status(500).json({ error: 'Failed to fetch popular recipes.' });
+    }
+});
+
+// GET favourite recipes
+app.get('/get-favourite-recipes', async (req, res) => {
+    try {
+        const recipesCollection = admin.firestore().collection('recipes');
+        const snapshot = await recipesCollection.where('isFavourite', '==', true).orderBy('createdAt', 'desc').get();
+        if (snapshot.empty) {
+            return res.json([]);
+        }
+        const recipes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.json(recipes);
+    } catch (error) {
+        console.error('🔥 Error fetching favourite recipes:', error);
+        res.status(500).json({ error: 'Failed to fetch favourite recipes.' });
+    }
+});
+
+// POST to toggle a recipe's favourite status
+app.post('/recipes/:id/favourite', async (req, res) => {
+    const { id } = req.params;
+    const { isFavourite } = req.body;
+
+    if (typeof isFavourite !== 'boolean') {
+        return res.status(400).json({ error: 'isFavourite must be a boolean.' });
+    }
+
+    try {
+        const recipeRef = admin.firestore().collection('recipes').doc(id);
+        await recipeRef.update({ isFavourite });
+        console.log(`✅ Toggled favourite for recipe ${id} to ${isFavourite}`);
+        res.json({ success: true, message: `Recipe ${id} updated.` });
+    } catch (error) {
+        console.error(`🔥 Error toggling favourite for recipe ${id}:`, error);
+        res.status(500).json({ error: 'Failed to update recipe favourite status.' });
+    }
+});
+
+
+// --- FORUM API ENDPOINTS ---
+
+// GET all posts
+app.get('/posts', async (req, res) => {
+    try {
+        const postsCollection = admin.firestore().collection('posts');
+        const snapshot = await postsCollection.orderBy('createdAt', 'desc').get();
+        if (snapshot.empty) {
+            return res.json([]);
+        }
+        const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.json(posts);
+    } catch (error) {
+        console.error('🔥 Error fetching posts:', error);
+        res.status(500).json({ error: 'Failed to fetch posts.' });
+    }
+});
+
+// POST a new post
+app.post('/posts', async (req, res) => {
+    const { title, content, author } = req.body;
+    if (!title || !content || !author) {
+        return res.status(400).json({ error: 'Title, content, and author are required.' });
+    }
+
+    try {
+        const postsCollection = admin.firestore().collection('posts');
+        const newPost = {
+            title,
+            content,
+            author,
+            createdAt: new Date(),
+            comments: []
+        };
+        const docRef = await postsCollection.add(newPost);
+        console.log('📝 New post created with ID:', docRef.id);
+        res.status(201).json({ id: docRef.id, ...newPost });
+    } catch (error) {
+        console.error('🔥 Error creating post:', error);
+        res.status(500).json({ error: 'Failed to create post.' });
+    }
+});
+
+// POST a new comment on a post
+app.post('/posts/:id/comments', async (req, res) => {
+    const { id } = req.params;
+    const { text, author } = req.body;
+
+    if (!text || !author) {
+        return res.status(400).json({ error: 'Comment text and author are required.' });
+    }
+
+    try {
+        const postRef = admin.firestore().collection('posts').doc(id);
+        const newComment = {
+            text,
+            author,
+            createdAt: new Date()
+        };
+
+        await postRef.update({
+            comments: admin.firestore.FieldValue.arrayUnion(newComment)
+        });
+        
+        const updatedPostDoc = await postRef.get();
+        if (!updatedPostDoc.exists) {
+            return res.status(404).json({ error: 'Post not found after update.' });
+        }
+
+        console.log(`💬 New comment added to post ${id}`);
+        res.json({ id: updatedPostDoc.id, ...updatedPostDoc.data() });
+
+    } catch (error) {
+        console.error(`🔥 Error adding comment to post ${id}:`, error);
+        res.status(500).json({ error: 'Failed to add comment.' });
+    }
+});
+
 
 app.listen(port, () => {
     console.log(`🚀 Server is running on http://localhost:${port}`);
