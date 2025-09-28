@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GourmetNet AI - Modern Recipe Bot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            color: #d1d5db; /* Light gray text */
+            background-color: #111827; /* Fallback for browsers that don't support the gradient */
+        }
+
+        #background-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: linear-gradient(-45deg, #0f0c29, #302b63, #24243e, #111827);
+            background-size: 400% 400%;
+            animation: gradientBG 20s ease infinite;
+        }
+
+        #foodBackground {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.1; /* Make the food items subtle */
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        
+        /* Glassmorphism Card Style */
+        .card {
+            background: rgba(31, 41, 55, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .loader {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #fff;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        
+        .fade-out {
+            animation: fadeOut 0.7s ease-out forwards;
+        }
+        
+        #combinedIngredientsList li {
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 0.5rem;
+            background-color: #374151;
+            color: #e5e7eb;
+            border-radius: 0.375rem;
+            border: 1px solid #4b5563;
+        }
+
+        .remove-btn {
+            background-color: transparent;
+            color: #fca5a5;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 16px;
+            line-height: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .remove-btn:hover {
+            background-color: #450a0a;
+            color: #fecaca;
+        }
+
+        /* Modal styling */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+        }
+        .modal-content {
+            background-color: #1f2937;
+            color: #d1d5db;
+            margin: 10% auto;
+            padding: 2rem;
+            border: 1px solid #4b5563;
+            width: 90%;
+            max-width: 600px;
+            border-radius: 1rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            animation: slideIn 0.4s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(-30px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .close-button {
+            color: #9ca3af;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            transition: color 0.2s ease;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: #e5e7eb;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        /* Mouse Effects Styling */
+        @keyframes fallAndFade {
+            0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(200px) rotate(180deg); opacity: 0; }
+        }
+        @keyframes shrinkAndFade {
+            0% { transform: scale(1); opacity: 0.7; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+        .falling-food {
+            position: fixed;
+            font-size: 1.5rem;
+            pointer-events: none;
+            animation: fallAndFade 1.5s linear forwards;
+            z-index: 9999;
+        }
+        .sauce-drip {
+            position: fixed;
+            width: 10px;
+            height: 10px;
+            background-color: #fb923c;
+            border-radius: 50%;
+            pointer-events: none;
+            animation: shrinkAndFade 1s linear forwards;
+            z-index: 9998;
+        }
+    </style>
+</head>
+
+<body class="overflow-hidden">
+    <!-- Background container -->
+    <div id="background-container">
+        <canvas id="foodBackground"></canvas>
+    </div>
+    
+    <!-- Start Page -->
+    <div id="startPage" class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm text-white flex flex-col items-center justify-center z-50 transition-opacity duration-700 overflow-hidden cursor-pointer">
+        <div class="text-center z-10">
+            <h1 class="text-6xl md:text-8xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-orange-400 to-amber-400">GourmetNet AI</h1>
+            <p class="text-gray-300 mt-4 text-xl">Your intelligent partner in the kitchen.</p>
+            <p class="mt-12 text-gray-400 animate-pulse">Click anywhere to continue...</p>
+        </div>
+    </div>
+
+    <!-- Main App Container -->
+    <div id="appContainer" class="hidden opacity-0 transition-opacity duration-500">
+        <div class="w-full max-w-5xl mx-auto p-4 md:p-8">
+            <header class="text-center mb-10">
+                <h1 class="text-4xl md:text-5xl font-bold text-gray-100">GourmetNet AI 🍳</h1>
+                <p class="text-gray-400 mt-3 text-lg">Your intelligent partner in the kitchen.</p>
+            </header>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                <!-- Left Column: Inputs -->
+                <div class="space-y-6">
+                    <!-- Web Scraper Input -->
+                    <div class="card p-6">
+                        <label for="recipeUrl" class="block text-lg font-semibold text-gray-200 mb-2">1. Add Ingredients from a Website</label>
+                         <div class="flex gap-2">
+                            <input type="url" id="recipeUrl"
+                                class="block w-full px-4 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition"
+                                placeholder="Paste a recipe URL here">
+                            <button id="scrapeBtn" class="bg-orange-500 text-white font-bold py-2 px-5 rounded-lg hover:bg-orange-600 transition-all duration-300 transform hover:scale-105 shadow-sm hover:shadow-md flex items-center justify-center disabled:bg-gray-500">
+                                <span id="btnTextScrape">Extract</span>
+                                <div id="loaderScrape" class="loader hidden"></div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Image Upload -->
+                    <div class="card p-6">
+                        <label for="imageUpload" class="block text-lg font-semibold text-gray-200 mb-2">2. Add Ingredients From Photo</label>
+                        <input type="file" id="imageUpload" accept="image/*"
+                            class="block w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-orange-900/50 file:text-orange-300 hover:file:bg-orange-900/70 transition">
+                         <div id="imagePreviewContainer" class="mt-4 hidden">
+                             <img id="imagePreview" src="#" alt="Image Preview" class="max-w-xs mx-auto rounded-lg shadow-md">
+                        </div>
+                        <button id="identifyBtn" class="mt-4 w-full bg-orange-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-600 transition-all duration-300 transform hover:scale-105 shadow-sm hover:shadow-md flex items-center justify-center disabled:bg-gray-500">
+                            <span id="btnText1">Identify & Add</span>
+                            <div id="loader1" class="loader hidden"></div>
+                        </button>
+                    </div>
+
+                    <!-- Manual Ingredient Input -->
+                    <div class="card p-6">
+                        <label for="manualIngredients" class="block text-lg font-semibold text-gray-200 mb-2">3. Add Ingredients Manually</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="manualIngredients"
+                                class="block w-full px-4 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition"
+                                placeholder="e.g., chicken, rice">
+                            <button id="addManualBtn" class="bg-orange-500 text-white font-bold py-2 px-5 rounded-lg hover:bg-orange-600 transition-all duration-300 transform hover:scale-105 shadow-sm hover:shadow-md">Add</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Combined List & Customization -->
+                <div class="card p-6 space-y-6">
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <h2 class="text-2xl font-bold text-gray-100">Your Ingredient List</h2>
+                            <button id="clearListBtn" class="text-sm text-red-400 hover:underline">Clear List</button>
+                        </div>
+                        <div id="combinedIngredientsContainer" class="p-4 bg-gray-900 rounded-lg border border-gray-700 text-gray-300 min-h-[150px] max-h-48 overflow-y-auto">
+                            <ul id="combinedIngredientsList"></ul>
+                        </div>
+                    </div>
+
+                    <!-- Recipe Customization Options -->
+                    <div>
+                         <h2 class="text-2xl font-bold text-gray-100 mb-3">Customize Your Recipe</h2>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label for="cookingTime" class="block text-sm font-medium text-gray-400">Max Cooking Time</label>
+                                <select id="cookingTime" class="mt-1 block w-full py-2 px-3 border border-gray-600 bg-gray-700 text-gray-200 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm transition">
+                                    <option>Any</option>
+                                    <option>Under 30 minutes</option>
+                                    <option>30-60 minutes</option>
+                                    <option>Over 60 minutes</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="diet" class="block text-sm font-medium text-gray-400">Dietary Preference</label>
+                                <select id="diet" class="mt-1 block w-full py-2 px-3 border border-gray-600 bg-gray-700 text-gray-200 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm transition">
+                                    <option>None</option>
+                                    <option>Vegetarian</option>
+                                    <option>Vegan</option>
+                                    <option>Gluten-Free</option>
+                                    <option>Dairy-Free</option>
+                                    <option>Nut-Free</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                             <label for="allergies" class="block text-sm font-medium text-gray-400">Allergies</label>
+                            <input type="text" id="allergies" class="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 text-gray-200 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm transition" placeholder="e.g., peanuts, shellfish">
+                        </div>
+                        <div class="mt-4">
+                             <label for="cookingStyle" class="block text-sm font-medium text-gray-400">Cooking Style</label>
+                            <input type="text" id="cookingStyle" class="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 text-gray-200 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm transition" placeholder="e.g., Gordon Ramsay, Italian">
+                        </div>
+                    </div>
+
+
+                    <button id="finalGetRecipeBtn" class="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold py-3 px-4 rounded-lg hover:from-orange-600 hover:to-amber-600 transition-all duration-300 transform hover:scale-105 shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span id="btnTextFinal">✨ Generate Recipe</span>
+                        <div id="loaderFinal" class="loader hidden"></div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="results" class="mt-10">
+                 <div id="recipeContainer" class="hidden card p-6">
+                    <!-- Nutrition Facts Section -->
+                    <div id="nutritionSection" class="mb-6 p-4 border border-gray-700 rounded-lg bg-gray-900/50 hidden">
+                        <h3 class="font-bold text-lg mb-3 text-center text-gray-200">Estimated Nutrition (per serving)</h3>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between items-center">
+                                <span class="font-semibold text-gray-400">Calories:</span>
+                                <span id="caloriesValue" class="font-bold text-lg text-gray-100"></span>
+                            </div>
+                             <div class="flex justify-between items-center border-t border-gray-700 pt-2 mt-2">
+                                <span class="font-semibold text-gray-400">Protein:</span>
+                                <span id="proteinValue" class="font-bold text-lg text-gray-100"></span>
+                            </div>
+                             <div class="flex justify-between items-center border-t border-gray-700 pt-2 mt-2">
+                                <span class="font-semibold text-gray-400">Carbs:</span>
+                                <span id="carbsValue" class="font-bold text-lg text-gray-100"></span>
+                            </div>
+                             <div class="flex justify-between items-center border-t border-gray-700 pt-2 mt-2">
+                                <span class="font-semibold text-gray-400">Fat:</span>
+                                <span id="fatValue" class="font-bold text-lg text-gray-100"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- This div will now be populated with structured HTML -->
+                    <div id="recipeOutput" class="text-gray-300"></div>
+                </div>
+                 <div id="error" class="text-red-300 p-4 bg-red-900/50 border border-red-500/50 rounded-lg hidden mt-8"></div>
+            </div>
+
+            <!-- Saved Recipes Section -->
+            <div class="mt-10">
+                <button id="viewSavedBtn" class="w-full bg-gray-700 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors duration-300 transform hover:scale-105 shadow-md">View Saved Recipes</button>
+                <div id="savedRecipesContainer" class="mt-4 hidden card p-6">
+                    <h2 class="text-2xl font-bold text-gray-100 mb-2">Saved Recipes:</h2>
+                    <ul id="savedRecipesList" class="space-y-2"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recipe Modal -->
+    <div id="recipeModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <div id="modalRecipeContent"></div>
+        </div>
+    </div>
+
+<script>
+    const apiKey = "AIzaSyC2GKSnNWHiJeiwDUMrx5-jbntMtTaR-gI";
+
+    // All DOM Elements are selected here...
+    const appContainer = document.getElementById('appContainer');
+    const foodBackgroundCanvas = document.getElementById('foodBackground');
+
+
+    const imageUpload = document.getElementById('imageUpload');
+    const identifyBtn = document.getElementById('identifyBtn');
+    const errorDiv = document.getElementById('error');
+    const imagePreview = document.getElementById('imagePreview');
+    const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+    const loader1 = document.getElementById('loader1');
+    const btnText1 = document.getElementById('btnText1');
+    const recipeContainer = document.getElementById('recipeContainer');
+    const recipeOutput = document.getElementById('recipeOutput');
+    const manualIngredientsInput = document.getElementById('manualIngredients');
+    const addManualBtn = document.getElementById('addManualBtn');
+    const combinedIngredientsList = document.getElementById('combinedIngredientsList');
+    const clearListBtn = document.getElementById('clearListBtn');
+    const finalGetRecipeBtn = document.getElementById('finalGetRecipeBtn');
+    const btnTextFinal = document.getElementById('btnTextFinal');
+    const loaderFinal = document.getElementById('loaderFinal');
+    const viewSavedBtn = document.getElementById('viewSavedBtn');
+    const savedRecipesContainer = document.getElementById('savedRecipesContainer');
+    const savedRecipesList = document.getElementById('savedRecipesList');
+    const recipeModal = document.getElementById('recipeModal');
+    const modalRecipeContent = document.getElementById('modalRecipeContent');
+    const closeButton = document.querySelector('.close-button');
+    const recipeUrlInput = document.getElementById('recipeUrl');
+    const scrapeBtn = document.getElementById('scrapeBtn');
+    const btnTextScrape = document.getElementById('btnTextScrape');
+    const loaderScrape = document.getElementById('loaderScrape');
+    const cookingTimeSelect = document.getElementById('cookingTime');
+    const dietSelect = document.getElementById('diet');
+    const allergiesInput = document.getElementById('allergies');
+    const cookingStyleInput = document.getElementById('cookingStyle');
+    const nutritionSection = document.getElementById('nutritionSection');
+    const caloriesValue = document.getElementById('caloriesValue');
+    const proteinValue = document.getElementById('proteinValue');
+    const carbsValue = document.getElementById('carbsValue');
+    const fatValue = document.getElementById('fatValue');
+
+    let imageData = null;
+    let combinedIngredients = [];
+    let savedRecipes = []; // To store the fetched recipes
+    
+    // --- CANVAS BACKGROUND LOGIC ---
+    const ctx = foodBackgroundCanvas.getContext('2d');
+    let particles = [];
+    const foodEmojis = ['🍎', '🥦', '🥕', '🍗', '🍕', '🍔', '🍇', '🍓', '🥑', '🌽', '🌶️', '🧀'];
+
+    function resizeCanvas() {
+        foodBackgroundCanvas.width = window.innerWidth;
+        foodBackgroundCanvas.height = window.innerHeight;
+    }
+
+    class Particle {
+        constructor() {
+            this.x = Math.random() * foodBackgroundCanvas.width;
+            this.y = foodBackgroundCanvas.height + Math.random() * 100;
+            this.speed = Math.random() * 1.5 + 0.5; // Slightly slower
+            this.size = Math.random() * 15 + 10;
+            this.emoji = foodEmojis[Math.floor(Math.random() * foodEmojis.length)];
+        }
+        update() {
+            this.y -= this.speed;
+            if (this.y < -this.size) {
+                this.y = foodBackgroundCanvas.height + this.size;
+                this.x = Math.random() * foodBackgroundCanvas.width;
+            }
+        }
+        draw() {
+            ctx.font = `${this.size}px serif`;
+            ctx.fillText(this.emoji, this.x, this.y);
+        }
+    }
+
+    function initParticles() {
+        // More particles for a fuller background
+        for (let i = 0; i < 40; i++) {
+            particles.push(new Particle());
+        }
+    }
+
+    function animateParticles() {
+        ctx.clearRect(0, 0, foodBackgroundCanvas.width, foodBackgroundCanvas.height);
+        particles.forEach(p => {
+            p.update();
+            p.draw();
+        });
+        requestAnimationFrame(animateParticles);
+    }
+    
+    // --- STARTUP LOGIC ---
+    document.addEventListener('DOMContentLoaded', (event) => {
+        const startPage = document.getElementById('startPage');
+        
+        resizeCanvas();
+        initParticles();
+        animateParticles();
+
+        if(startPage) {
+            startPage.addEventListener('click', () => {
+                startPage.classList.add('fade-out');
+                setTimeout(() => {
+                    startPage.style.display = 'none';
+                    document.body.style.overflow = 'auto';
+                    appContainer.classList.remove('hidden');
+                    appContainer.style.opacity = 1;
+                }, 700);
+            });
+        } else {
+             appContainer.classList.remove('hidden');
+             appContainer.style.opacity = 1;
+        }
+    });
+
+    window.addEventListener('resize', resizeCanvas);
+
+
+    // --- MOUSE FOLLOW EFFECT ---
+    let lastTrailTime = 0;
+    document.addEventListener('mousemove', (e) => {
+        const startPage = document.getElementById('startPage');
+        if (startPage && startPage.style.display !== 'none') {
+            const now = Date.now();
+            if (now - lastTrailTime > 30) {
+                createSauceDrip(e.clientX, e.clientY);
+                lastTrailTime = now;
+            }
+            if (Math.random() > 0.8) {
+                 createFallingFood(e.clientX, e.clientY);
+            }
+        }
+    });
+    
+    function createFallingFood(x, y) {
+        const food = document.createElement('span');
+        food.textContent = foodEmojis[Math.floor(Math.random() * foodEmojis.length)];
+        food.className = 'falling-food';
+        food.style.left = `${x}px`;
+        food.style.top = `${y}px`;
+        document.body.appendChild(food);
+
+        setTimeout(() => {
+            food.remove();
+        }, 1500);
+    }
+    
+    function createSauceDrip(x, y) {
+        const drip = document.createElement('div');
+        drip.className = 'sauce-drip';
+        drip.style.left = `${x}px`;
+        drip.style.top = `${y}px`;
+        drip.style.width = `${Math.random() * 5 + 5}px`;
+        drip.style.height = drip.style.width;
+        drip.style.opacity = Math.random() * 0.5 + 0.2;
+        document.body.appendChild(drip);
+
+        setTimeout(() => {
+            drip.remove();
+        }, 1000);
+    }
+
+
+    // --- MAIN APP EVENT LISTENERS ---
+    imageUpload.addEventListener('change', handleImageUpload);
+    identifyBtn.addEventListener('click', identifyAndAddIngredients);
+    addManualBtn.addEventListener('click', addManualIngredients);
+    scrapeBtn.addEventListener('click', scrapeAndAddIngredients);
+    clearListBtn.addEventListener('click', clearCombinedList);
+    finalGetRecipeBtn.addEventListener('click', fetchAndShowRecipe);
+    viewSavedBtn.addEventListener('click', fetchAndShowSavedRecipes);
+    closeButton.onclick = () => recipeModal.style.display = "none";
+    window.onclick = (event) => {
+        if (event.target == recipeModal) {
+            recipeModal.style.display = "none";
+        }
+    }
+    // **THIS IS THE FIX**: Using event delegation for saved recipes
+    savedRecipesList.addEventListener('click', (event) => {
+        const li = event.target.closest('li');
+        if (li && li.dataset.recipeIndex !== undefined) {
+            const index = parseInt(li.dataset.recipeIndex, 10);
+            const recipe = savedRecipes[index];
+            if (recipe) {
+                let modalHtml = '';
+                if (recipe.nutrition) {
+                    const { calories, protein, carbs, fat } = recipe.nutrition;
+                    modalHtml += `<div class="mb-4 p-4 border border-gray-600 rounded-lg">
+                        <h3 class="font-bold text-lg mb-2 text-center">Estimated Nutrition</h3>
+                        <p><strong>Calories:</strong> ${calories.value} ${calories.unit}</p>
+                        <p><strong>Protein:</strong> ${protein.value} ${protein.unit}</p>
+                        <p><strong>Carbs:</strong> ${carbs.value} ${carbs.unit}</p>
+                        <p><strong>Fat:</strong> ${fat.value} ${fat.unit}</p>
+                    </div>`;
+                }
+                modalRecipeContent.innerHTML = modalHtml;
+                renderRecipe(recipe.recipe, modalRecipeContent);
+                recipeModal.style.display = "block";
+            }
+        }
+    });
+
+    // --- RENDER FUNCTIONS ---
+    function renderRecipe(recipeData, containerElement) {
+        const existingContent = containerElement.innerHTML;
+        containerElement.innerHTML = ''; // Clear previous content
+
+        const title = document.createElement('h2');
+        title.className = 'text-3xl font-bold mb-2 text-orange-400';
+        title.textContent = recipeData.title;
+        
+        const description = document.createElement('p');
+        description.className = 'text-gray-400 italic mb-4';
+        description.textContent = recipeData.description;
+
+        const statsContainer = document.createElement('div');
+        statsContainer.className = 'flex items-center space-x-4 text-sm text-gray-400 mb-6 border-b border-gray-700 pb-4';
+        statsContainer.innerHTML = `
+            <span><strong>Prep:</strong> ${recipeData.prepTime}</span>
+            <span><strong>Cook:</strong> ${recipeData.cookTime}</span>
+            <span><strong>Servings:</strong> ${recipeData.servings}</span>
+        `;
+
+        const ingredientsTitle = document.createElement('h3');
+        ingredientsTitle.className = 'text-xl font-bold mb-2 text-gray-200';
+        ingredientsTitle.textContent = 'Ingredients';
+
+        const ingredientsList = document.createElement('ul');
+        ingredientsList.className = 'list-disc list-inside space-y-1 mb-6';
+        if(Array.isArray(recipeData.ingredients)) {
+            recipeData.ingredients.forEach(ing => {
+                const li = document.createElement('li');
+                li.textContent = ing;
+                ingredientsList.appendChild(li);
+            });
+        }
+
+        const instructionsTitle = document.createElement('h3');
+        instructionsTitle.className = 'text-xl font-bold mb-2 text-gray-200';
+        instructionsTitle.textContent = 'Instructions';
+
+        const instructionsList = document.createElement('ol');
+        instructionsList.className = 'list-decimal list-inside space-y-2';
+         if(Array.isArray(recipeData.instructions)) {
+            recipeData.instructions.forEach(step => {
+                const li = document.createElement('li');
+                li.textContent = step;
+                instructionsList.appendChild(li);
+            });
+        }
+
+        // Re-add existing content (like nutrition) before the new content
+        containerElement.innerHTML = existingContent;
+        // Append all the new elements
+        containerElement.appendChild(title);
+        containerElement.appendChild(description);
+        containerElement.appendChild(statsContainer);
+        containerElement.appendChild(ingredientsTitle);
+        containerElement.appendChild(ingredientsList);
+        containerElement.appendChild(instructionsTitle);
+        containerElement.appendChild(instructionsList);
+    }
+
+    // --- LOGIC FUNCTIONS ---
+    function handleImageUpload(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                imageData = event.target.result.split(',')[1];
+                imagePreview.src = event.target.result;
+                imagePreviewContainer.classList.remove('hidden');
+                imagePreviewContainer.classList.add('fade-in');
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function setLoadingState(button, loader, textElement, isLoading) {
+        button.disabled = isLoading;
+        if (isLoading) {
+            loader.classList.remove('hidden');
+            textElement.classList.add('hidden');
+        } else {
+            loader.classList.add('hidden');
+            textElement.classList.remove('hidden');
+        }
+    }
+
+    function showError(message) {
+        errorDiv.innerText = message;
+        errorDiv.classList.remove('hidden');
+        errorDiv.classList.add('fade-in');
+    }
+    
+    function updateCombinedListUI() {
+        combinedIngredientsList.innerHTML = '';
+        if (combinedIngredients.length === 0) {
+            finalGetRecipeBtn.disabled = true;
+            combinedIngredientsList.innerHTML = `<li class="text-gray-500 italic !bg-transparent !border-none">Your ingredients will appear here...</li>`
+            return;
+        }
+         finalGetRecipeBtn.disabled = false;
+        combinedIngredients.forEach((ingredient, index) => {
+            const li = document.createElement('li');
+            li.textContent = ingredient;
+            li.classList.add('fade-in');
+            const removeBtn = document.createElement('button');
+            removeBtn.innerHTML = '&times;';
+            removeBtn.className = 'remove-btn';
+            removeBtn.onclick = () => {
+                combinedIngredients.splice(index, 1);
+                updateCombinedListUI();
+            };
+            li.appendChild(removeBtn);
+            combinedIngredientsList.appendChild(li);
+        });
+    }
+    
+    function clearCombinedList() {
+        combinedIngredients = [];
+        updateCombinedListUI();
+    }
+
+    function addManualIngredients() {
+        const manualText = manualIngredientsInput.value.trim();
+        if (!manualText) return;
+        const manualIngredientsArray = manualText.split(',').map(item => item.trim()).filter(Boolean);
+        combinedIngredients.push(...manualIngredientsArray);
+        updateCombinedListUI();
+        manualIngredientsInput.value = '';
+    }
+    
+    async function scrapeAndAddIngredients() {
+        const url = recipeUrlInput.value.trim();
+        if (!url) {
+            showError("Please enter a URL.");
+            return;
+        }
+        setLoadingState(scrapeBtn, loaderScrape, btnTextScrape, true);
+        errorDiv.classList.add('hidden');
+
+        try {
+             const response = await fetch('http://localhost:3000/scrape-recipe', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ url }) 
+            });
+            
+            const responseText = await response.text();
+            if (!response.ok) {
+                try {
+                    const errorJson = JSON.parse(responseText);
+                    throw new Error(errorJson.error || `Server responded with status: ${response.status}`);
+                } catch (e) {
+                     throw new Error(`Server error: ${response.status} - Could not parse error response.`);
+                }
+            }
+
+            const data = JSON.parse(responseText);
+            if (data.ingredients && data.ingredients.length > 0) {
+                combinedIngredients.push(...data.ingredients);
+                updateCombinedListUI();
+                recipeUrlInput.value = '';
+            } else {
+                throw new Error("No ingredients could be extracted from the URL.");
+            }
+        } catch (error) {
+             let errorMessage = `Error: ${error.message}`;
+            if (error.name === 'TypeError') errorMessage += '\n\nIs your backend server running?';
+            showError(errorMessage);
+        } finally {
+            setLoadingState(scrapeBtn, loaderScrape, btnTextScrape, false);
+        }
+    }
+
+
+    async function identifyAndAddIngredients() {
+        if (!imageData) {
+            showError('Please upload an image first.');
+            return;
+        }
+        setLoadingState(identifyBtn, loader1, btnText1, true);
+        errorDiv.classList.add('hidden');
+        
+        const model = 'gemini-2.5-flash-preview-05-20';
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const payload = { contents: [{ parts: [{ text: "Identify the distinct cooking ingredients in this image. List them separated by commas." }, { inlineData: { mimeType: "image/jpeg", data: imageData } }] }] };
+
+        try {
+            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (!response.ok) {
+                const errorJson = await response.json();
+                throw new Error(`API Error ${response.status}: ${errorJson.error.message}`);
+            }
+            const data = await response.json();
+            if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
+                const ingredientsText = data.candidates[0].content.parts[0].text;
+                const identifiedArray = ingredientsText.split(',').map(item => item.trim()).filter(Boolean);
+                combinedIngredients.push(...identifiedArray);
+                updateCombinedListUI();
+            } else {
+                throw new Error("No ingredients identified.");
+            }
+        } catch (error) {
+            showError(`Error: ${error.message}`);
+        } finally {
+            setLoadingState(identifyBtn, loader1, btnText1, false);
+        }
+    }
+
+    async function fetchAndShowRecipe() {
+        if (combinedIngredients.length === 0) {
+            showError('Please add some ingredients to the list first.');
+            return;
+        }
+        setLoadingState(finalGetRecipeBtn, loaderFinal, btnTextFinal, true);
+        errorDiv.classList.add('hidden');
+        recipeContainer.classList.add('hidden');
+
+
+        const recipeOptions = {
+            ingredients: combinedIngredients,
+            time: cookingTimeSelect.value,
+            diet: dietSelect.value,
+            allergies: allergiesInput.value.trim(),
+            cookingStyle: cookingStyleInput.value.trim()
+        };
+
+        try {
+            const response = await fetch('http://localhost:3000/get-recipe', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify(recipeOptions) 
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'The server returned an error.');
+            }
+            const data = await response.json();
+            
+            renderRecipe(data.recipe, recipeOutput);
+
+            if (data.nutrition) {
+                caloriesValue.textContent = `${data.nutrition.calories.value} ${data.nutrition.calories.unit}`;
+                proteinValue.textContent = `${data.nutrition.protein.value} ${data.nutrition.protein.unit}`;
+                carbsValue.textContent = `${data.nutrition.carbs.value} ${data.nutrition.carbs.unit}`;
+                fatValue.textContent = `${data.nutrition.fat.value} ${data.nutrition.fat.unit}`;
+                nutritionSection.classList.remove('hidden');
+                nutritionSection.classList.add('fade-in');
+            } else {
+                nutritionSection.classList.add('hidden');
+            }
+            
+            recipeContainer.classList.remove('hidden');
+            recipeContainer.classList.add('fade-in');
+
+        } catch (error) {
+            let errorMessage = `Error: ${error.message}`;
+            if (error.name === 'TypeError') errorMessage += '\n\nIs your backend server running?';
+            showError(errorMessage);
+        } finally {
+            setLoadingState(finalGetRecipeBtn, loaderFinal, btnTextFinal, false);
+        }
+    }
+
+    async function fetchAndShowSavedRecipes() {
+        try {
+            const response = await fetch('http://localhost:3000/get-recipes');
+            if (!response.ok) {
+                throw new Error(`Server responded with status: ${response.status}`);
+            }
+            const responseText = await response.text();
+            
+            try {
+                savedRecipes = JSON.parse(responseText); // Update the global variable
+            } catch (e) {
+                throw new Error("Failed to parse server response. The server may be down or returning an error page.");
+            }
+
+            savedRecipesList.innerHTML = '';
+            if (savedRecipes.length === 0) {
+                savedRecipesList.innerHTML = '<li class="text-gray-400">No recipes saved yet.</li>';
+            } else {
+                savedRecipes.forEach((recipe, index) => {
+                    const li = document.createElement('li');
+                    li.textContent = recipe.recipe.title || `Recipe with: ${recipe.ingredients.join(', ')}`;
+                    li.classList.add('cursor-pointer', 'hover:bg-gray-700', 'p-2', 'rounded-md');
+                    li.dataset.recipeIndex = index; // Add index for the event listener
+                    savedRecipesList.appendChild(li);
+                });
+            }
+            savedRecipesContainer.classList.toggle('hidden');
+        } catch (error) {
+            showError(`Error fetching saved recipes: ${error.message}`);
+        }
+    }
+    
+    // Initial UI state
+    updateCombinedListUI();
+</script>
+</body>
+
+</html>
+
